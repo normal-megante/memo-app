@@ -24,9 +24,11 @@
 
 - `index.html` … 画面の骨組み（下のタブ・右下の＋ボタン・下から出るシート）
 - `style.css` … 見た目（ダークモード対応）
-- `db.js` … IndexedDB の薄いラッパー（棚：notes / events / files / meta）
+- `db.js` … IndexedDB の薄いラッパー（DB v2。棚：notes / events / files / meta / birthdays）。棚を足すときは VERSION を上げる
+- `birthday.js` … 誕生日の計算（あと何日・年齢・和暦・通知の判定・Google カレンダーの URL）。app.js と sw.js の両方が使う。画面や保存には触らない
 - `app.js` … 画面と機能のすべて
-- `sw.js` … オフライン用のキャッシュ。**ファイルを変えたら `C`（キャッシュ名）の番号を上げる**
+- `sw.js` … オフライン用のキャッシュと、誕生日の通知（periodicsync `birthday-check`）。**ファイルを変えたら `C`（キャッシュ名）の番号を上げる**
+  - 動作確認：アプリから `{type:'bd-dry-run'}` を postMessage すると、通知は出さずに「出すはずの通知のタイトル」を返す
 - `icons/` … アイコン（`icon.svg` が元。PNG は `tools/make-icons.py` で作る）
 - `dev-server.py` … PC での確認用サーバー（`python dev-server.py` → http://localhost:8170）
 - `tests/` … `node --test`（PowerShell で実行）
@@ -37,6 +39,9 @@
   - `kind`：`memo`（メモタブ）／`question`・`curious`・`link`（ひらめきタブ）
 - `events`：`{ id, date: 'YYYY-MM-DD', time, title, memo }`
 - `files`：`{ id, name, type, blob, added }`（バックアップには含まれない）
+- `birthdays`：`{ id, name, month: 1〜12, day, year: 生まれた年 or null, memo, updated }`
+  - 2月29日生まれは、うるう年以外は2月28日として扱う（Google カレンダーは BYMONTHDAY=-1 で2月の最後の日）
+- `meta` の誕生日まわり：`bdDays`（何日前から知らせるか。初期値7）、`bdNotify`（通知オン）、`bdNotified`（通知済みの記録 `{ 'id:誕生日の日付:pre|day': 時刻 }`。sw.js が書く）、`bdHide`（上の帯を✕で隠した日）
 - `meta`：`{ id: キー, v: 値 }`。キー：`genres`、`vault`（暗号化した金庫）、`lastBackup`（最後にバックアップした時刻）、`lastChange`（notes・events・genres・vault を最後に変えた時刻。db.js が自動で記録）、`backupSnooze`（「あとで」を押したときの、次にお知らせする時刻）
 
 ## 作る順番と進み具合
@@ -44,7 +49,7 @@
 1. **仕上げ・データを守る・公開** … 完了（公開とスマホでの確認待ち）
    - `storage.persist()`、バックアップを共有（Google ドライブ等）、しばらくバックアップしていないとお知らせ
    - PNG アイコン・manifest の id、検索欄の日本語入力の不具合などを直す
-2. **🎂 誕生日タブ** … 未着手
+2. **🎂 誕生日タブ** … 完了（スマホでの確認待ち。通知と Google カレンダーはスマホでしか試せない）
    - 名前・月日・生まれた年（空でもよい）・メモ。次の誕生日が近い順、年齢表示。予定カレンダーに🎂
    - お知らせ：①アプリを開いたら上に表示 ②スマホ通知（periodic background sync。届かない日もある）③Google カレンダー登録リンク
 3. **📋 コピーしやすく** … 未着手

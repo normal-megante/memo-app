@@ -19,7 +19,7 @@ function precacheList() {
 test('アプリのファイルは全部 sw.js の PRECACHE に書いてある', () => {
   const list = precacheList();
   const needed = [
-    'index.html', 'style.css', 'db.js', 'app.js', 'manifest.webmanifest',
+    'index.html', 'style.css', 'db.js', 'birthday.js', 'app.js', 'manifest.webmanifest',
     ...readdirSync(join(root, 'icons')).map((f) => `icons/${f}`),
   ];
   const missing = needed.filter((file) => !list.includes(file));

@@ -1,10 +1,10 @@
 // IndexedDB の薄いラッパー
 // DB 名 'mynote'。同じ github.io の他のアプリと名前がぶつからないようにしてある。
 const DB = (() => {
-  const VERSION = 1;
-  const STORES = ['notes', 'events', 'files', 'meta'];
+  const VERSION = 2; // v2: 誕生日の棚（birthdays）を追加
+  const STORES = ['notes', 'events', 'files', 'meta', 'birthdays'];
   // ここに入っている棚を書き換えたら「最後に変更した時刻」も記録する（バックアップのお知らせ用）
-  const TRACK = ['notes', 'events'];
+  const TRACK = ['notes', 'events', 'birthdays'];
   const TRACK_META = ['genres', 'vault'];
   let dbp;
   function open() {

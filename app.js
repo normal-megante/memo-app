@@ -2,7 +2,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const TITLES = { memo: 'メモ', idea: 'ひらめき', cal: '予定', files: 'ファイル', vault: '金庫' };
+const TITLES = { memo: 'メモ', idea: 'ひらめき', cal: '予定', bd: '誕生日', files: 'ファイル', vault: '金庫' };
 const KINDS = { memo: 'メモ', question: '❓問い', curious: '👀気になる', link: '🔗つなぎ' };
 const S = { tab: 'memo', genre: '', q: '', genres: [], pair: null, month: new Date(), sel: ymd(new Date()), vault: null };
 
@@ -67,10 +67,10 @@ async function render() {
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
   $('#title').textContent = TITLES[S.tab];
   $('#fab').hidden = S.tab === 'vault' && !(S.vault && S.vault.key);
-  await ({ memo: rMemo, idea: rIdea, cal: rCal, files: rFiles, vault: rVault })[S.tab]();
+  await ({ memo: rMemo, idea: rIdea, cal: rCal, bd: rBd, files: rFiles, vault: rVault })[S.tab]();
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S.tab = b.dataset.tab; render(); } });
-$('#fab').addEventListener('click', () => ({ memo: () => editNote(), idea: () => editNote(null, 'question'), cal: () => editEvent(), files: pickFiles, vault: () => editCred() })[S.tab]());
+$('#fab').addEventListener('click', () => ({ memo: () => editNote(), idea: () => editNote(null, 'question'), cal: () => editEvent(), bd: () => editBirthday(), files: pickFiles, vault: () => editCred() })[S.tab]());
 $('#menuBtn').addEventListener('click', menu);
 
 // ---------- メモ ----------
@@ -82,7 +82,7 @@ function noteCard(n) {
 function bindCards(root, list) { $$('.card[data-id]', root).forEach(c => c.onclick = () => editNote(list.find(n => n.id === c.dataset.id))); }
 async function rMemo() {
   const all = (await DB.all('notes')).filter(n => n.kind === 'memo');
-  $('#view').innerHTML = `${await backupBanner(all.length)}<input id="q" type="search" placeholder="🔍 検索" value="${esc(S.q)}">
+  $('#view').innerHTML = `${await bdBanner()}${await backupBanner(all.length)}<input id="q" type="search" placeholder="🔍 検索" value="${esc(S.q)}">
   <div class="chips"><button class="chip ${S.genre ? '' : 'on'}" data-g="">すべて</button>${S.genres.map(g => `<button class="chip ${S.genre === g ? 'on' : ''}" data-g="${esc(g)}">${esc(g)}</button>`).join('')}<button class="chip" id="addG">＋</button></div>
   <div id="list"></div>`;
   // 検索欄そのものは描き直さない（描き直すと日本語の変換中の文字が消えてしまうため）
@@ -96,7 +96,7 @@ async function rMemo() {
   $('#q').oninput = e => { S.q = e.target.value; draw(); };
   $$('.chip[data-g]').forEach(c => c.onclick = () => { S.genre = c.dataset.g; render(); });
   $('#addG').onclick = addGenre;
-  bindBackupBanner();
+  bindBdBanner(); bindBackupBanner();
   draw();
 }
 async function addGenre() {
@@ -150,7 +150,7 @@ async function rIdea() {
   const ideas = all.filter(n => n.kind !== 'memo').sort((a, b) => b.updated - a.updated);
   const p = S.pair && S.pair.map(id => all.find(n => n.id === id));
   const pairOk = p && p.every(Boolean);
-  $('#view').innerHTML = `<div class="card"><h3>🎲 ランダム2つ → 共通点は？</h3>
+  $('#view').innerHTML = `${await bdBanner()}<div class="card"><h3>🎲 ランダム2つ → 共通点は？</h3>
   <p class="sub" style="-webkit-line-clamp:unset">メモやひらめきから2つ選びます。つながりを考えて書き足そう。</p><div style="height:8px"></div>
   ${pairOk ? `<div class="pair">${p.map(n => `<div class="card"><b>${esc(n.title || '(無題)')}</b><div class="sub">${esc((n.body || '').slice(0, 60))}</div></div>`).join('')}</div>
   <div style="height:8px"></div><textarea id="common" placeholder="共通点・つながりは？（例: あの目元と関係ありそう）" style="min-height:90px"></textarea>
@@ -171,26 +171,32 @@ async function rIdea() {
     $('#askC').onclick = () => copy(`次の2つに意外な共通点やつながりを5つ挙げてください。\n\nA: ${p[0].title}\n${p[0].body}\n\nB: ${p[1].title}\n${p[1].body}`);
   }
   bindCards($('#view'), ideas);
+  bindBdBanner();
 }
 
 // ---------- カレンダー ----------
 async function rCal() {
-  const evs = await DB.all('events');
+  const evs = await DB.all('events'), bds = await DB.all('birthdays');
+  // その日が誕生日の人（生まれる前の年には出さない）
+  const bdOn = key => { const ky = +key.slice(0, 4); return bds.filter(b => !(b.year && ky < b.year) && BD.ymd(BD.dateIn(ky, b.month, b.day)) === key); };
   const y = S.month.getFullYear(), m = S.month.getMonth();
   const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate(), today = ymd(new Date());
   let cells = ['日', '月', '火', '水', '木', '金', '土'].map(d => `<div class="dow">${d}</div>`).join('') + '<div></div>'.repeat(first);
   for (let d = 1; d <= days; d++) {
     const key = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    cells += `<button class="d ${key === today ? 'today' : ''} ${key === S.sel ? 'sel' : ''}" data-d="${key}">${d}<span class="dot">${evs.some(e => e.date === key) ? '●' : ''}</span></button>`;
+    cells += `<button class="d ${key === today ? 'today' : ''} ${key === S.sel ? 'sel' : ''}" data-d="${key}">${d}<span class="dot">${evs.some(e => e.date === key) ? '●' : ''}${bdOn(key).length ? '🎂' : ''}</span></button>`;
   }
   const day = evs.filter(e => e.date === S.sel).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const sy = +S.sel.slice(0, 4), dayBds = bdOn(S.sel);
+  const bdCards = dayBds.map(b => `<div class="card bd soon" data-bdc="${b.id}"><h3>🎂 ${esc(b.name)}の誕生日</h3>${b.year ? `<div class="meta">${sy === b.year ? '生まれた日' : `${sy - b.year}歳`}</div>` : ''}</div>`).join('');
   $('#view').innerHTML = `<div class="row" style="margin-bottom:8px"><button class="btn ghost" id="pm">◀</button><b>${y}年${m + 1}月</b><button class="btn ghost" id="nm">▶</button></div>
   <div class="cal">${cells}</div><h3 style="margin:14px 0 8px">${S.sel}</h3>
-  ${day.map(e => `<div class="card" data-e="${e.id}"><h3>${esc(e.time || '')} ${esc(e.title)}</h3><p>${esc(e.memo)}</p></div>`).join('') || '<div class="empty" style="margin-top:12px">予定なし</div>'}`;
+  ${bdCards}${day.map(e => `<div class="card" data-e="${e.id}"><h3>${esc(e.time || '')} ${esc(e.title)}</h3><p>${esc(e.memo)}</p></div>`).join('') || (bdCards ? '' : '<div class="empty" style="margin-top:12px">予定なし</div>')}`;
   $('#pm').onclick = () => { S.month = new Date(y, m - 1, 1); rCal(); };
   $('#nm').onclick = () => { S.month = new Date(y, m + 1, 1); rCal(); };
   $$('.d').forEach(b => b.onclick = () => { S.sel = b.dataset.d; rCal(); });
   $$('[data-e]').forEach(c => c.onclick = () => editEvent(evs.find(e => e.id === c.dataset.e)));
+  $$('[data-bdc]').forEach(c => c.onclick = () => editBirthday(bds.find(b => b.id === c.dataset.bdc)));
 }
 function editEvent(ev) {
   const isNew = !ev; ev = ev || { id: DB.uid(), date: S.sel, time: '', title: '', memo: '' };
@@ -209,6 +215,143 @@ function editEvent(ev) {
     };
     const d = $('#del', r); if (d) d.onclick = async () => { if (confirm('この予定を削除しますか？')) { await DB.del('events', ev.id); closeSheet(true); render(); } };
   }, () => leave());
+}
+
+// ---------- 誕生日 ----------
+const NOTIFY_CHOICES = [[0, '当日だけ'], [1, '前日から'], [3, '3日前から'], [7, '1週間前から'], [14, '2週間前から'], [30, '1か月前から']];
+async function rBd() {
+  const days = await DB.getMeta('bdDays', 7);
+  const list = (await DB.all('birthdays')).map(b => ({ b, n: BD.next(b), now: BD.ageNow(b) }))
+    .sort((x, y) => x.n.days - y.n.days || x.b.name.localeCompare(y.b.name, 'ja'));
+  $('#view').innerHTML = `<div class="row" style="margin-bottom:10px"><span class="sub">${list.length ? `${list.length}人 · 次の誕生日が近い順` : ''}</span><button class="btn ghost" id="bdSet" style="margin:0">🔔 お知らせ設定</button></div>
+  ${list.map(x => bdCard(x, days)).join('') || '<div class="empty">誕生日がまだありません\n右下の＋で追加</div>'}`;
+  $('#bdSet').onclick = bdSettings;
+  $$('[data-b]').forEach(c => c.onclick = () => editBirthday(list.find(x => x.b.id === c.dataset.b).b));
+}
+function bdCard({ b, n, now }, days) {
+  const today = n.days === 0;
+  const age = n.age == null ? '' : today ? `${n.age}歳になりました` : `${n.age}歳になる（いま${now}歳）`;
+  return `<div class="card bd ${today ? 'notice' : n.days <= days ? 'soon' : ''}" data-b="${b.id}">
+  <div class="row"><h3>${esc(b.name)}</h3><b class="days">${today ? '🎉 今日！' : `あと${n.days}日`}</b></div>
+  <div class="meta">${BD.label(n.date)}${age ? ' · ' + age : ''}</div>${b.memo ? `<p>${esc(b.memo)}</p>` : ''}</div>`;
+}
+function editBirthday(b) {
+  const isNew = !b; b = b || { id: DB.uid(), name: '', month: 0, day: 0, year: null, memo: '' };
+  let leave = () => true;
+  const opts = (count, sel, unit) => Array.from({ length: count }, (_, i) => `<option value="${i + 1}" ${sel === i + 1 ? 'selected' : ''}>${i + 1}${unit}</option>`).join('');
+  openSheet(`<h2>🎂 誕生日</h2>
+  <input id="bn" placeholder="名前（例：お母さん、山田さん）" value="${esc(b.name)}">
+  <div class="pair2"><select id="bm"><option value="">月</option>${opts(12, b.month, '月')}</select><select id="bdd"><option value="">日</option>${opts(BD.daysInMonth(b.month || 1), b.day, '日')}</select></div>
+  <input id="by" type="number" inputmode="numeric" placeholder="生まれた年（例：1998）" value="${b.year || ''}">
+  <p class="hint">生まれた年は、わからなければ空のままでOK。入れると年齢がわかります。</p>
+  <div id="bprev" class="card"></div>
+  <textarea id="bmemo" placeholder="メモ（関係・好きなもの・プレゼント案など）" style="min-height:90px">${esc(b.memo)}</textarea>
+  <button class="btn" id="save">保存</button><button class="btn ghost" id="gcal">📅 Googleカレンダーに登録</button>${isNew ? '' : '<button class="btn danger" id="del">削除</button>'}
+  <p class="hint">「Googleカレンダーに登録」は、毎年くり返す予定として登録するページを開きます。通知はカレンダーアプリがしてくれるので、いちばん確実です。送るのは名前と生まれた年だけです（メモは送りません）。スマホによっては、うまく開けないことがあります。</p>`, r => {
+    const val = () => { const y = $('#by', r).value.trim(); return { name: $('#bn', r).value.trim(), month: +$('#bm', r).value, day: +$('#bdd', r).value, year: y ? +y : null, memo: $('#bmemo', r).value }; };
+    const start = JSON.stringify(val());
+    leave = () => JSON.stringify(val()) === start || confirm('保存していない変更があります。保存せずに閉じますか？');
+    // 入力に合わせて「次の誕生日・年齢」を下に表示する
+    const preview = () => {
+      const v = val(), el = $('#bprev', r);
+      if (!v.month || !v.day) { el.textContent = '月と日を選ぶと、次の誕生日がここに出ます。'; return; }
+      const err = BD.check({ ...v, name: '-' });
+      if (err) { el.textContent = '⚠️ ' + err; return; }
+      const n = BD.next(v);
+      let t = `次の誕生日：${BD.label(n.date)}（${n.days === 0 ? '今日！' : `あと${n.days}日`}）`;
+      if (v.year) { const w = BD.wareki(v.year, v.month, v.day); t += `\n${v.year}年${w ? `（${w}）` : ''}生まれ · いま${BD.ageNow(v)}歳${n.days ? ` · 次で${n.age}歳` : ''}`; }
+      if (v.month === 2 && v.day === 29) t += '\nうるう年以外は、2月28日としてお知らせします。';
+      el.textContent = t;
+    };
+    $('#bm', r).onchange = () => {
+      const m = +$('#bm', r).value || 1, cur = +$('#bdd', r).value;
+      $('#bdd', r).innerHTML = `<option value="">日</option>${opts(BD.daysInMonth(m), cur <= BD.daysInMonth(m) ? cur : 0, '日')}`;
+      preview();
+    };
+    $('#bdd', r).onchange = preview; $('#by', r).oninput = preview;
+    preview();
+    $('#save', r).onclick = async () => {
+      const v = val(), err = BD.check(v); if (err) return toast(err);
+      Object.assign(b, v, { updated: Date.now() }); await DB.put('birthdays', b); closeSheet(true); render();
+    };
+    $('#gcal', r).onclick = () => { const v = val(), err = BD.check(v); if (err) return toast(err); window.open(BD.gcalUrl(v), '_blank', 'noopener'); };
+    const d = $('#del', r); if (d) d.onclick = async () => { if (confirm(`「${b.name}」の誕生日を削除しますか？`)) { await DB.del('birthdays', b.id); closeSheet(true); render(); } };
+  }, () => leave());
+}
+// メモ・ひらめきの画面のいちばん上に出す「もうすぐ誕生日」
+async function bdBanner() {
+  const list = await DB.all('birthdays'); if (!list.length) return '';
+  if ((await DB.getMeta('bdHide', '')) === ymd(new Date())) return '';
+  const days = await DB.getMeta('bdDays', 7);
+  const soon = list.map(b => ({ b, n: BD.next(b) })).filter(x => x.n.days <= days).sort((x, y) => x.n.days - y.n.days);
+  if (!soon.length) return '';
+  return `<div class="card bdnote" id="bdBanner"><button class="x" id="bdHide" aria-label="今日は表示しない">✕</button>${soon.slice(0, 3).map(({ b, n }) =>
+    `<div>${n.days === 0 ? '🎉 <b>今日</b>' : `🎂 <b>あと${n.days}日</b>`}　${esc(b.name)}${n.age != null ? `（${n.age}歳${n.days ? 'になる' : ''}）` : ''}</div>`).join('')}${soon.length > 3 ? `<div class="sub">ほか${soon.length - 3}人</div>` : ''}</div>`;
+}
+function bindBdBanner() {
+  const e = $('#bdBanner'); if (!e) return;
+  e.onclick = async ev => {
+    if (ev.target.id === 'bdHide') { await DB.setMeta('bdHide', ymd(new Date())); toast('今日はもう表示しません'); render(); return; }
+    S.tab = 'bd'; render();
+  };
+}
+// --- スマホへの通知（1日1回の確認は sw.js がする） ---
+async function notifyStatus() {
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  let sync = 'unsupported';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg && 'periodicSync' in reg) sync = (await reg.periodicSync.getTags()).includes('birthday-check') ? 'on' : 'off';
+  } catch { }
+  return { perm, sync, on: perm === 'granted' && await DB.getMeta('bdNotify', false) };
+}
+// Chrome に「1日1回くらい起こして」とお願いする。ホーム画面に追加したアプリでないと断られる
+async function registerSync() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg || !('periodicSync' in reg)) return false;
+    const p = await navigator.permissions.query({ name: 'periodic-background-sync' });
+    if (p.state !== 'granted') return false;
+    await reg.periodicSync.register('birthday-check', { minInterval: 12 * 3600e3 });
+    return true;
+  } catch { return false; }
+}
+async function enableNotify() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return toast('この端末では通知が使えません');
+  if (await Notification.requestPermission() !== 'granted') return toast('通知が許可されませんでした');
+  await DB.setMeta('bdNotify', true);
+  toast(await registerSync() ? '通知をオンにしました' : '通知を許可しました。1日1回の確認は、ホーム画面に追加したアプリで動きます');
+}
+async function disableNotify() {
+  await DB.setMeta('bdNotify', false);
+  try { const reg = await navigator.serviceWorker.getRegistration(); if (reg && 'periodicSync' in reg) await reg.periodicSync.unregister('birthday-check'); } catch { }
+  toast('通知をやめました');
+}
+async function testNotify() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return toast('先に「通知をオンにする」を押してください');
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    await reg.showNotification('🎂 テスト通知', { body: '誕生日が近づくと、こんなふうにお知らせします', icon: 'icons/icon-192.png', tag: 'bd-test' });
+  } catch { toast('通知を出せませんでした'); }
+}
+async function bdSettings() {
+  const days = await DB.getMeta('bdDays', 7), st = await notifyStatus();
+  const permTxt = { granted: '許可ずみ ✅', denied: 'ブロック中（Chrome のサイト設定で「通知」を許可してください）', default: 'まだ', unsupported: 'この端末では使えません' }[st.perm];
+  const syncTxt = { on: '動いています ✅', off: 'まだ動いていません', unsupported: 'この端末・ブラウザでは使えません' }[st.sync];
+  openSheet(`<h2>🔔 誕生日のお知らせ</h2>
+  <h3>何日前から知らせる？</h3>
+  <select id="bdDays">${NOTIFY_CHOICES.map(([v, t]) => `<option value="${v}" ${v === days ? 'selected' : ''}>${t}</option>`).join('')}</select>
+  <p class="hint">アプリを開いたとき、メモ・ひらめきの画面のいちばん上に「🎂 もうすぐ誕生日」と出ます（これは確実に出ます）。</p>
+  <h3>スマホに通知</h3>
+  <p class="sub">通知の許可：<b>${permTxt}</b><br>1日1回の確認：<b>${syncTxt}</b></p>
+  ${st.on ? '<button class="btn ghost" id="nOff">通知をやめる</button>' : '<button class="btn" id="nOn">通知をオンにする</button>'}<button class="btn ghost" id="nTest">試しに通知を出す</button>
+  <p class="hint">Chrome が1日1回くらいアプリを起こして確認し、「○日前」と「当日」に1回ずつ通知します。Chrome まかせなので、<b>届かない日や、時間がずれることがあります</b>（夜10時〜朝7時は音を鳴らしません）。ホーム画面に追加したアプリでだけ動きます。</p>
+  <p class="hint">確実に知りたいときは、それぞれの誕生日の画面にある「📅 Googleカレンダーに登録」がおすすめです。</p>`, r => {
+    $('#bdDays', r).onchange = async e => { await DB.setMeta('bdDays', +e.target.value); toast('保存しました'); };
+    const on = $('#nOn', r); if (on) on.onclick = async () => { await enableNotify(); bdSettings(); };
+    const off = $('#nOff', r); if (off) off.onclick = async () => { await disableNotify(); bdSettings(); };
+    $('#nTest', r).onclick = testNotify;
+  }, () => { render(); });
 }
 
 // ---------- ファイル ----------
@@ -354,7 +497,10 @@ function editCred(c) {
 const DAY = 864e5;
 function ago(ts) { const d = Math.floor((Date.now() - ts) / DAY); return d <= 0 ? '今日' : `${d}日前`; }
 async function backupData() {
-  return { app: 'mynote', v: 1, exportedAt: new Date().toISOString(), notes: await DB.all('notes'), events: await DB.all('events'), genres: S.genres, vault: await DB.getMeta('vault', null) };
+  return {
+    app: 'mynote', v: 2, exportedAt: new Date().toISOString(), notes: await DB.all('notes'), events: await DB.all('events'),
+    birthdays: await DB.all('birthdays'), bdDays: await DB.getMeta('bdDays', 7), genres: S.genres, vault: await DB.getMeta('vault', null),
+  };
 }
 // how: 'share'（共有 → Google ドライブなど）／'file'（スマホのダウンロードフォルダへ）
 async function doBackup(how) {
@@ -382,9 +528,11 @@ function restoreBackup() {
     try { d = JSON.parse(await i.files[0].text()); } catch { return toast('このファイルは読み込めませんでした'); }
     if (!d || !Array.isArray(d.notes)) return toast('マイノートのバックアップではないようです');
     const when = d.exportedAt ? `（${fmt(Date.parse(d.exportedAt))} のバックアップ）` : '';
-    if (!confirm(`メモ・ひらめき ${d.notes.length}件、予定 ${(d.events || []).length}件を読み込みます${when}。\n今あるメモは消えません（同じメモはバックアップの内容になります）。続けますか？`)) return;
+    if (!confirm(`メモ・ひらめき ${d.notes.length}件、予定 ${(d.events || []).length}件、誕生日 ${(d.birthdays || []).length}件を読み込みます${when}。\n今あるメモは消えません（同じメモはバックアップの内容になります）。続けますか？`)) return;
     for (const n of d.notes) await DB.put('notes', n);
     for (const e of d.events || []) await DB.put('events', e);
+    for (const b of d.birthdays || []) await DB.put('birthdays', b);
+    if (d.bdDays != null) await DB.setMeta('bdDays', d.bdDays);
     if (d.genres) await DB.setMeta('genres', [...new Set([...S.genres, ...d.genres])]);
     if (d.vault && confirm('金庫も読み込みますか？（今の金庫は、バックアップの金庫に置き換わります）')) await DB.setMeta('vault', d.vault);
     lockVault(); closeSheet(); toast('読み込みました'); render();
@@ -419,7 +567,7 @@ async function menu() {
   <p class="hint">出てきた一覧から「ドライブ」を選ぶと Google ドライブに保存できます。スマホをなくしても、そこから戻せます。</p>
   <button class="btn ghost" id="bkFile">⬇ ファイルに保存</button>
   <p class="hint">スマホの「ダウンロード」フォルダに保存されます（スマホが壊れると一緒に消えます）。</p>
-  <p class="hint">入るもの：メモ・ひらめき・予定・ジャンル・金庫（暗号化したまま）。<b>ファイルタブの画像・PDFなどは入りません。</b></p>
+  <p class="hint">入るもの：メモ・ひらめき・予定・誕生日・ジャンル・金庫（暗号化したまま）。<b>ファイルタブの画像・PDFなどは入りません。</b></p>
   <button class="btn ghost" id="bkRestore">📥 バックアップから戻す</button>
   <p class="hint">今あるメモは消えません。同じメモは、バックアップのときの内容に戻ります。</p>
   <h3>🛡 消されにくくする設定</h3>
@@ -437,5 +585,13 @@ async function menu() {
 
 // 空き容量が少ないときに Chrome がデータを消さないようお願いする（ホーム画面に追加していると、たいてい通る）
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').then(async () => {
+    // 通知をオンにしてあれば、1日1回の確認をお願いし直す（ホーム画面に追加したあとで動き出す）
+    if ('Notification' in window && Notification.permission === 'granted' && await DB.getMeta('bdNotify', false)) registerSync();
+  }).catch(() => { });
+  // 誕生日の通知をタップしたら、誕生日タブを開く
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'open-tab') { closeSheet(true); S.tab = e.data.tab; render(); } });
+}
+if (location.hash === '#bd') { S.tab = 'bd'; history.replaceState(null, '', location.pathname + location.search); }
 render();
