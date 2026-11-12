@@ -1,9 +1,9 @@
 // オフラインでも開けるようにするしくみ（Service Worker）と、誕生日の通知
 // アプリのファイルを変えたら、C の番号を1つ上げる。
 importScripts('birthday.js');
-const C = 'mynote-v4';
+const C = 'mynote-v5';
 const PRECACHE = [
-  './', 'index.html', 'style.css', 'db.js', 'birthday.js', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'style.css', 'db.js', 'birthday.js', 'stamps.js', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
 ];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())));

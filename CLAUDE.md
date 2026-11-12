@@ -26,6 +26,7 @@
 - `style.css` … 見た目（ダークモード対応）
 - `db.js` … IndexedDB の薄いラッパー（DB v2。棚：notes / events / files / meta / birthdays）。棚を足すときは VERSION を上げる
 - `birthday.js` … 誕生日の計算（あと何日・年齢・和暦・通知の判定・Google カレンダーの URL）。app.js と sw.js の両方が使う。画面や保存には触らない
+- `stamps.js` … ひらめきスタンプの計算（記録と今あるひらめきを合わせる・連続日数・月の数）。画面や保存には触らない
 - `app.js` … 画面と機能のすべて
 - `sw.js` … オフライン用のキャッシュと、誕生日の通知（periodicsync `birthday-check`）。**ファイルを変えたら `C`（キャッシュ名）の番号を上げる**
   - 動作確認：アプリから `{type:'bd-dry-run'}` を postMessage すると、通知は出さずに「出すはずの通知のタイトル」を返す
@@ -35,8 +36,11 @@
 
 ## データの形（IndexedDB `mynote`）
 
-- `notes`：`{ id, kind, title, body, genre, pinned, links, created, updated }`
+- `notes`：`{ id, kind, title, body, genre, pinned, star, links, created, updated }`
   - `kind`：`memo`（メモタブ）／`question`・`curious`・`link`（ひらめきタブ）
+  - `star`：⭐「いいの思いついた！」（ひらめきだけ。つけても `updated` は変えない）
+- `meta` の `ideaDays`：ひらめきスタンプの記録 `{ 'YYYY-MM-DD': 1（済）| 2（金色） }`。保存時に stampIdea() が足す（下げない）。
+  画面では、この記録と今あるひらめき（created の日）を合わせて表示するので、ひらめきを消してもスタンプは残る
 - `events`：`{ id, date: 'YYYY-MM-DD', time, title, memo }`
 - `files`：`{ id, name, type, blob, added }`（バックアップには含まれない）
 - `birthdays`：`{ id, name, month: 1〜12, day, year: 生まれた年 or null, memo, updated }`
@@ -55,5 +59,8 @@
 3. **📋 コピーしやすく** … 完了（スマホでの確認待ち）
    - タップでまず「見る画面」（viewNote）。全部コピー・タイトル／1行タップでコピー・範囲コピー（はじめ→終わりの行）・一覧の📋で開かずにコピー
    - URL・メール・電話番号・郵便番号を拾ってチップに（findCopyables）。編集→保存で見る画面に戻る
-4. **💡 ひらめきスタンプ** … 未着手
-   - 書いた日に「済」スタンプ・連続日数・⭐「いいの思いついた！」（⭐の日は金色）。コインやノルマはなし（ゆるめに）
+4. **💡 ひらめきスタンプ** … 完了（スマホでの確認待ち）
+   - ひらめきタブの上に「ひらめきカード」（月のカレンダーに「済」、⭐の日は金色、連続日数・今月の数）
+   - ⭐「いいの思いついた！」は編集画面と見る画面で切り替え。一覧に「⭐ いいのだけ」の絞り込み。コインやノルマはなし（ゆるめに）
+
+最初に決めた4ステップはここまで。次はスマホで使った感想を聞いて決める。

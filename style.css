@@ -1,5 +1,5 @@
-:root{--bg:#f4f6f9;--card:#fff;--text:#1d2530;--sub:#6b7686;--main:#3b6ea5;--line:#e1e6ed;--danger:#c0392b;--notice:#fff6df;--noticeLine:#e5b443;--bd:#e0679a;--tab:64px}
-@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1c222b;--text:#e8edf3;--sub:#8c97a6;--main:#6aa3dc;--line:#2c3440;--danger:#e46a5c;--notice:#2c2617;--noticeLine:#8a6d2a;--bd:#e07aa5}}
+:root{--bg:#f4f6f9;--card:#fff;--text:#1d2530;--sub:#6b7686;--main:#3b6ea5;--line:#e1e6ed;--danger:#c0392b;--notice:#fff6df;--noticeLine:#e5b443;--bd:#e0679a;--stamp:#d0392b;--tab:64px}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1c222b;--text:#e8edf3;--sub:#8c97a6;--main:#6aa3dc;--line:#2c3440;--danger:#e46a5c;--notice:#2c2617;--noticeLine:#8a6d2a;--bd:#e07aa5;--stamp:#ff6b5b}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Noto Sans JP",sans-serif;display:flex;flex-direction:column}
@@ -71,3 +71,16 @@ img.full{width:100%}
 .ln.copied,.vtitle.copied{background:color-mix(in srgb,var(--main) 32%,transparent)}
 .found{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
 .found .chip{margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 12px;font-size:14px}
+.stampcard .stats{display:flex;flex-wrap:wrap;gap:2px 14px;margin:6px 0 8px;font-size:14px}
+.stampcard .done{color:var(--stamp);font-weight:700}
+button.btn.sm{padding:6px 14px;margin:0}
+.scal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;margin:8px 0}
+.scal .dow{font-size:11px;color:var(--sub)}
+.sd{position:relative;aspect-ratio:1;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center}
+.sd .num{position:absolute;top:1px;left:4px;font-size:10px;color:var(--sub)}
+.sd.today{outline:2px dashed var(--stamp);outline-offset:-2px}
+.sd.future{opacity:.45}
+.stamp{width:74%;aspect-ratio:1;border:2px solid var(--stamp);color:var(--stamp);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;line-height:1;transform:rotate(-14deg);font-family:"Noto Serif JP","Yu Mincho","Hiragino Mincho ProN",serif}
+.stamp.gold{border-color:#d4a514;color:#a87600;background:radial-gradient(circle,#fff8d6,#ffd84d);box-shadow:0 0 6px #f5c84299}
+button.btn.star.on{background:#ffe27a;color:#5a4300}
+.card p.hint{display:block;-webkit-line-clamp:unset;overflow:visible;white-space:normal;margin:0}

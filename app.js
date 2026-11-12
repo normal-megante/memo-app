@@ -4,7 +4,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TITLES = { memo: 'メモ', idea: 'ひらめき', cal: '予定', bd: '誕生日', files: 'ファイル', vault: '金庫' };
 const KINDS = { memo: 'メモ', question: '❓問い', curious: '👀気になる', link: '🔗つなぎ' };
-const S = { tab: 'memo', genre: '', q: '', genres: [], pair: null, month: new Date(), sel: ymd(new Date()), vault: null };
+const S = { tab: 'memo', genre: '', q: '', genres: [], pair: null, month: new Date(), sel: ymd(new Date()), vault: null, ideaMonth: new Date(), ideaStar: false };
 
 function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function toast(t) { const e = $('#toast'); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => e.hidden = true, 2200); }
@@ -78,7 +78,7 @@ $('#menuBtn').addEventListener('click', menu);
 function noteCard(n) {
   const links = (n.links || []).length ? ' 🔗' : '';
   const meta = [n.kind !== 'memo' ? KINDS[n.kind] : '', esc(n.genre || ''), fmt(n.updated)].filter(Boolean).join(' · ');
-  return `<div class="card" data-id="${n.id}"><button class="cpy" aria-label="本文をコピー">📋</button><h3>${n.pinned ? '📌 ' : ''}${esc(n.title || '(無題)')}</h3><p>${esc(n.body)}</p><div class="meta">${meta}${links}</div></div>`;
+  return `<div class="card" data-id="${n.id}"><button class="cpy" aria-label="本文をコピー">📋</button><h3>${n.pinned ? '📌 ' : ''}${n.star ? '⭐ ' : ''}${esc(n.title || '(無題)')}</h3><p>${esc(n.body)}</p><div class="meta">${meta}${links}</div></div>`;
 }
 // カードをタップ → 見る画面。右上の 📋 → 開かずに本文をコピー
 function bindCards(root, list) {
@@ -110,8 +110,9 @@ function viewNote(n) {
   const found = findCopyables(n.body || '');
   const meta = [n.kind !== 'memo' ? KINDS[n.kind] : '', esc(n.genre || ''), fmt(n.updated)].filter(Boolean).join(' · ');
   const HINT = n.title ? 'タイトルや行をタップすると、そこだけコピーします。' : '行をタップすると、その1行だけコピーします。';
-  openSheet(`<h2 class="vtitle ${n.title ? 'tap' : ''}" id="vt">${n.pinned ? '📌 ' : ''}${esc(n.title || '(無題)')}</h2>
+  openSheet(`<h2 class="vtitle ${n.title ? 'tap' : ''}" id="vt">${n.pinned ? '📌 ' : ''}${n.star ? '⭐ ' : ''}${esc(n.title || '(無題)')}</h2>
   <div class="meta" style="margin:-6px 0 10px">${meta}</div>
+  ${ST.isIdea(n) ? `<button class="btn ghost star ${n.star ? 'on' : ''}" id="vstar">${n.star ? '⭐' : '☆'} いいの思いついた！</button><br>` : ''}
   <button class="btn" id="cpAll">📋 全部コピー</button><button class="btn ghost" id="edit">✏️ 編集</button><button class="btn ghost" id="range">✂️ 範囲をえらぶ</button>
   <p class="hint" id="vhint">${HINT}</p>
   ${found.length ? `<div class="found">${found.map(([i, v]) => `<button class="chip" data-v="${esc(v)}">${i} ${esc(v)}</button>`).join('')}</div>
@@ -123,6 +124,12 @@ function viewNote(n) {
     const flash = els => { els.forEach(e => e.classList.add('copied')); setTimeout(() => els.forEach(e => e.classList.remove('copied', 'sel')), 1200); };
     $('#cpAll', r).onclick = () => copy(n.body || n.title, '全部コピーしました');
     $('#edit', r).onclick = () => editNote(n, null, true);
+    const vs = $('#vstar', r);
+    if (vs) vs.onclick = async () => {
+      n.star = !n.star; await DB.put('notes', n);
+      if (!(await stampIdea(n))) toast(n.star ? '⭐ をつけました' : '⭐ を外しました');
+      render(); viewNote(n);
+    };
     $('#ask', r).onclick = () => copy(`次のメモについて、深掘りする問いや関連しそうな視点を教えてください。\n\n【${n.title}】\n${n.body}`);
     if (n.title) $('#vt', r).onclick = e => { copy(n.title, 'タイトルをコピーしました'); flash([e.currentTarget]); };
     $$('.found .chip', r).forEach(c => c.onclick = () => copy(c.dataset.v, `コピー：${c.dataset.v}`));
@@ -183,29 +190,35 @@ async function editNote(n, kind, fromView) {
   <select id="g"><option value="">ジャンルなし</option>${S.genres.map(g => `<option ${n.genre === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
   <textarea id="b" placeholder="内容">${esc(n.body)}</textarea>
   ${linked.length ? `<div class="sub">つながり: ${linked.map(x => esc(x.title || '(無題)')).join(' / ')}</div>` : ''}
+  <div id="starBox" ${ST.isIdea(n) ? '' : 'hidden'}><button class="btn ghost star ${n.star ? 'on' : ''}" id="star">${n.star ? '⭐' : '☆'} いいの思いついた！</button>
+  <p class="hint">「これはいい！」と思ったら押しておこう。⭐をつけた日は、ひらめきカードのスタンプが金色になります。</p></div>
   <button class="btn" id="save">保存</button><button class="btn ghost" id="mic">🎤 音声入力</button>
   <button class="btn ghost" id="pin">${n.pinned ? '📌 固定解除' : '📌 固定'}</button>
   <button class="btn ghost" id="ask">Claude用にコピー</button>
   ${isNew ? '' : '<button class="btn danger" id="del">削除</button>'}
   <p class="hint">保存ボタンを押さずに閉じても（外側をタップ・戻る）、自動で保存します。</p>`, r => {
-    let pinned = !!n.pinned;
-    const now = () => ({ kind: $('#kind', r).value, title: $('#t', r).value.trim(), body: $('#b', r).value, genre: $('#g', r).value, pinned });
+    let pinned = !!n.pinned, star = !!n.star;
+    const now = () => ({ kind: $('#kind', r).value, title: $('#t', r).value.trim(), body: $('#b', r).value, genre: $('#g', r).value, pinned, star });
     const start = JSON.stringify(now());
+    // 保存できたら true（ひらめきのスタンプを押したときは 'stamped'。そのときはスタンプのお知らせを優先）
     const save = async () => {
       const v = now();
       if (!v.title && !v.body) return false;
       Object.assign(n, v, { updated: Date.now() });
       await DB.put('notes', n);
-      return true;
+      return (await stampIdea(n)) ? 'stamped' : true;
     };
     // 外側タップ・戻るで閉じたとき：変更があれば自動保存
-    leave = () => { if (JSON.stringify(now()) !== start) save().then(ok => { if (ok) { toast('自動で保存しました'); render(); } }); };
+    leave = () => { if (JSON.stringify(now()) !== start) save().then(ok => { if (ok) { if (ok !== 'stamped') toast('自動で保存しました'); render(); } }); };
+    $('#kind', r).onchange = () => { $('#starBox', r).hidden = $('#kind', r).value === 'memo'; };
+    $('#star', r).onclick = e => { star = !star; e.currentTarget.classList.toggle('on', star); e.currentTarget.textContent = `${star ? '⭐' : '☆'} いいの思いついた！`; };
     $('#mic', r).onclick = e => toggleVoice($('#b', r), e.target);
     $('#pin', r).onclick = e => { pinned = !pinned; e.target.textContent = pinned ? '📌 固定解除' : '📌 固定'; toast(pinned ? '一覧の上に固定します' : '固定を解除します'); };
     $('#ask', r).onclick = () => copy(`次のメモについて、深掘りする問いや関連しそうな視点を教えてください。\n\n【${$('#t', r).value}】\n${$('#b', r).value}`);
     $('#save', r).onclick = async () => {
-      if (!(await save())) return toast('空のままです');
-      if (fromView) { toast('保存しました'); render(); viewNote(n); return; }
+      const ok = await save();
+      if (!ok) return toast('空のままです');
+      if (fromView) { if (ok !== 'stamped') toast('保存しました'); render(); viewNote(n); return; }
       closeSheet(true); render();
     };
     const d = $('#del', r); if (d) d.onclick = async () => { if (confirm('削除しますか？')) { await DB.del('notes', n.id); closeSheet(true); render(); } };
@@ -213,19 +226,53 @@ async function editNote(n, kind, fromView) {
 }
 
 // ---------- ひらめき ----------
+// ひらめきを保存したら、その日のスタンプを記録する。今日のスタンプが押された（金色になった）ら知らせて true
+async function stampIdea(n) {
+  const next = ST.add(await DB.getMeta('ideaDays', {}), n); if (!next) return false;
+  await DB.setMeta('ideaDays', next);
+  const d = ST.ymd(new Date(n.created || n.updated));
+  if (d !== ymd(new Date())) return false;
+  toast(next[d] === 2 ? '⭐ 今日のスタンプが金色になりました！' : '💮 今日の「済」スタンプを押しました');
+  return true;
+}
+// ひらめきカード（書いた日に「済」、⭐の日は金色）
+function stampCard(days) {
+  const st = ST.streak(days), y = S.ideaMonth.getFullYear(), m = S.ideaMonth.getMonth();
+  const mon = ST.month(days, y, m + 1), today = ymd(new Date());
+  const first = new Date(y, m, 1).getDay(), cnt = new Date(y, m + 1, 0).getDate();
+  let cells = [...'日月火水木金土'].map(d => `<div class="dow">${d}</div>`).join('') + '<div></div>'.repeat(first);
+  for (let d = 1; d <= cnt; d++) {
+    const key = ymd(new Date(y, m, d)), v = days[key];
+    cells += `<div class="sd ${key === today ? 'today' : ''} ${key > today ? 'future' : ''}"><span class="num">${d}</span>${v ? `<span class="stamp ${v === 2 ? 'gold' : ''}">済</span>` : ''}</div>`;
+  }
+  const streak = `🔥 連続 <b>${st.n}</b>日${st.n && !st.today ? `<span class="sub">（今日書くと${st.n + 1}日）</span>` : ''}`;
+  return `<div class="card stampcard">
+  <div class="row"><b>💡 ひらめきカード</b><span class="${st.today ? 'done' : 'sub'}">${st.today ? '今日は書いた！💮' : '今日はまだ'}</span></div>
+  <div class="stats"><span>${streak}</span><span>今月 <b>${mon.count}</b>日</span><span>⭐ <b>${mon.gold}</b>日</span></div>
+  <div class="row"><button class="btn ghost sm" id="spm" aria-label="前の月">◀</button><b>${y}年${m + 1}月</b><button class="btn ghost sm" id="snm" aria-label="次の月">▶</button></div>
+  <div class="scal">${cells}</div>
+  <p class="hint">ひらめき（問い・気になる・つなぎ）を書いた日に「済」。⭐「いいの思いついた！」をつけた日は金色になります。1日1つ、短くてもOK。ひらめきを消しても、その日のスタンプは残ります。</p></div>`;
+}
 async function rIdea() {
   const all = await DB.all('notes');
-  const ideas = all.filter(n => n.kind !== 'memo').sort((a, b) => b.updated - a.updated);
+  const ideasAll = all.filter(ST.isIdea).sort((a, b) => b.updated - a.updated);
+  const starCount = ideasAll.filter(n => n.star).length;
+  const ideas = ideasAll.filter(n => !S.ideaStar || n.star);
+  const days = ST.merge(await DB.getMeta('ideaDays', {}), all);
   const p = S.pair && S.pair.map(id => all.find(n => n.id === id));
   const pairOk = p && p.every(Boolean);
-  $('#view').innerHTML = `${await bdBanner()}<div class="card"><h3>🎲 ランダム2つ → 共通点は？</h3>
+  $('#view').innerHTML = `${await bdBanner()}${stampCard(days)}<div class="card"><h3>🎲 ランダム2つ → 共通点は？</h3>
   <p class="sub" style="-webkit-line-clamp:unset">メモやひらめきから2つ選びます。つながりを考えて書き足そう。</p><div style="height:8px"></div>
   ${pairOk ? `<div class="pair">${p.map(n => `<div class="card"><b>${esc(n.title || '(無題)')}</b><div class="sub">${esc((n.body || '').slice(0, 60))}</div></div>`).join('')}</div>
   <div style="height:8px"></div><textarea id="common" placeholder="共通点・つながりは？（例: あの目元と関係ありそう）" style="min-height:90px"></textarea>
   <button class="btn" id="saveLink">つなぎとして保存</button><button class="btn ghost" id="askC">Claudeに聞く用コピー</button>` : ''}
   <button class="btn ${pairOk ? 'ghost' : ''}" id="roll">${pairOk ? 'もう一度ふる' : 'ふる'}</button></div>
   <h3 style="margin:14px 0 8px">問い・気になること・つなぎ</h3>
-  ${ideas.map(noteCard).join('') || '<div class="empty">右下の＋で「問い」を書いてみよう</div>'}`;
+  ${ideasAll.length ? `<div class="chips"><button class="chip ${S.ideaStar ? '' : 'on'}" data-star="">すべて</button><button class="chip ${S.ideaStar ? 'on' : ''}" data-star="1">⭐ いいのだけ（${starCount}）</button></div>` : ''}
+  ${ideas.map(noteCard).join('') || `<div class="empty">${S.ideaStar ? '⭐ をつけたひらめきはまだありません\nひらめきを開いて「☆ いいの思いついた！」を押すとつきます' : '右下の＋で「問い」を書いてみよう'}</div>`}`;
+  $('#spm').onclick = () => { S.ideaMonth = new Date(S.ideaMonth.getFullYear(), S.ideaMonth.getMonth() - 1, 1); rIdea(); };
+  $('#snm').onclick = () => { S.ideaMonth = new Date(S.ideaMonth.getFullYear(), S.ideaMonth.getMonth() + 1, 1); rIdea(); };
+  $$('[data-star]').forEach(c => c.onclick = () => { S.ideaStar = !!c.dataset.star; rIdea(); });
   $('#roll').onclick = () => {
     if (all.length < 2) return toast('メモが2つ以上必要です');
     const a = [...all].sort(() => Math.random() - .5).slice(0, 2); S.pair = a.map(x => x.id); rIdea();
@@ -233,8 +280,10 @@ async function rIdea() {
   if (pairOk) {
     $('#saveLink').onclick = async () => {
       const t = $('#common').value.trim(); if (!t) return toast('つながりを書いてください');
-      await DB.put('notes', { id: DB.uid(), kind: 'link', title: `${p[0].title || '無題'} × ${p[1].title || '無題'}`, body: t, genre: 'アイデア', links: p.map(x => x.id), pinned: false, created: Date.now(), updated: Date.now() });
-      S.pair = null; toast('保存しました'); render();
+      const note = { id: DB.uid(), kind: 'link', title: `${p[0].title || '無題'} × ${p[1].title || '無題'}`, body: t, genre: 'アイデア', links: p.map(x => x.id), pinned: false, created: Date.now(), updated: Date.now() };
+      await DB.put('notes', note);
+      if (!(await stampIdea(note))) toast('保存しました');
+      S.pair = null; render();
     };
     $('#askC').onclick = () => copy(`次の2つに意外な共通点やつながりを5つ挙げてください。\n\nA: ${p[0].title}\n${p[0].body}\n\nB: ${p[1].title}\n${p[1].body}`);
   }
@@ -567,7 +616,8 @@ function ago(ts) { const d = Math.floor((Date.now() - ts) / DAY); return d <= 0 
 async function backupData() {
   return {
     app: 'mynote', v: 2, exportedAt: new Date().toISOString(), notes: await DB.all('notes'), events: await DB.all('events'),
-    birthdays: await DB.all('birthdays'), bdDays: await DB.getMeta('bdDays', 7), genres: S.genres, vault: await DB.getMeta('vault', null),
+    birthdays: await DB.all('birthdays'), bdDays: await DB.getMeta('bdDays', 7), ideaDays: await DB.getMeta('ideaDays', {}),
+    genres: S.genres, vault: await DB.getMeta('vault', null),
   };
 }
 // how: 'share'（共有 → Google ドライブなど）／'file'（スマホのダウンロードフォルダへ）
@@ -601,6 +651,11 @@ function restoreBackup() {
     for (const e of d.events || []) await DB.put('events', e);
     for (const b of d.birthdays || []) await DB.put('birthdays', b);
     if (d.bdDays != null) await DB.setMeta('bdDays', d.bdDays);
+    if (d.ideaDays) { // スタンプは、今あるものと合わせる（金色を優先）
+      const cur = await DB.getMeta('ideaDays', {});
+      for (const [k, v] of Object.entries(d.ideaDays)) cur[k] = Math.max(cur[k] || 0, v);
+      await DB.setMeta('ideaDays', cur);
+    }
     if (d.genres) await DB.setMeta('genres', [...new Set([...S.genres, ...d.genres])]);
     if (d.vault && confirm('金庫も読み込みますか？（今の金庫は、バックアップの金庫に置き換わります）')) await DB.setMeta('vault', d.vault);
     lockVault(); closeSheet(); toast('読み込みました'); render();
@@ -635,7 +690,7 @@ async function menu() {
   <p class="hint">出てきた一覧から「ドライブ」を選ぶと Google ドライブに保存できます。スマホをなくしても、そこから戻せます。</p>
   <button class="btn ghost" id="bkFile">⬇ ファイルに保存</button>
   <p class="hint">スマホの「ダウンロード」フォルダに保存されます（スマホが壊れると一緒に消えます）。</p>
-  <p class="hint">入るもの：メモ・ひらめき・予定・誕生日・ジャンル・金庫（暗号化したまま）。<b>ファイルタブの画像・PDFなどは入りません。</b></p>
+  <p class="hint">入るもの：メモ・ひらめき（スタンプも）・予定・誕生日・ジャンル・金庫（暗号化したまま）。<b>ファイルタブの画像・PDFなどは入りません。</b></p>
   <button class="btn ghost" id="bkRestore">📥 バックアップから戻す</button>
   <p class="hint">今あるメモは消えません。同じメモは、バックアップのときの内容に戻ります。</p>
   <h3>🛡 消されにくくする設定</h3>
