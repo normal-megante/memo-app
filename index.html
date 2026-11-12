@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#3b6ea5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="description" content="メモ・ひらめき・予定をまとめて持てるメモアプリ">
+<title>マイノート</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top"><h1 id="title">メモ</h1><button id="menuBtn" aria-label="メニュー">⋯</button></header>
+<main id="view"></main>
+<button id="fab" aria-label="追加">＋</button>
+<nav id="tabs">
+  <button data-tab="memo">📝<span>メモ</span></button>
+  <button data-tab="idea">💡<span>ひらめき</span></button>
+  <button data-tab="cal">📅<span>予定</span></button>
+  <button data-tab="files">🗂<span>ファイル</span></button>
+  <button data-tab="vault">🔒<span>金庫</span></button>
+</nav>
+<div id="sheet" hidden><div id="sheetBody"></div></div>
+<div id="toast" hidden></div>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
