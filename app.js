@@ -34,7 +34,8 @@ addEventListener('popstate', () => {
 });
 if (history.state && history.state.sheet) history.replaceState(null, '');
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
-async function copy(t) {
+async function copy(t, msg) {
+  if (!t) return toast('コピーするものがありません');
   try { await navigator.clipboard.writeText(t); }
   catch {
     // 古い方法でもう一度ためす
@@ -42,7 +43,7 @@ async function copy(t) {
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove();
     if (!ok) return toast('コピーできませんでした');
   }
-  toast('コピーしました');
+  toast(msg || 'コピーしました');
 }
 function fmt(ts) { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('読み込み失敗(ネット接続が必要)')); document.head.appendChild(s); }); }
@@ -77,9 +78,74 @@ $('#menuBtn').addEventListener('click', menu);
 function noteCard(n) {
   const links = (n.links || []).length ? ' 🔗' : '';
   const meta = [n.kind !== 'memo' ? KINDS[n.kind] : '', esc(n.genre || ''), fmt(n.updated)].filter(Boolean).join(' · ');
-  return `<div class="card" data-id="${n.id}"><h3>${n.pinned ? '📌 ' : ''}${esc(n.title || '(無題)')}</h3><p>${esc(n.body)}</p><div class="meta">${meta}${links}</div></div>`;
+  return `<div class="card" data-id="${n.id}"><button class="cpy" aria-label="本文をコピー">📋</button><h3>${n.pinned ? '📌 ' : ''}${esc(n.title || '(無題)')}</h3><p>${esc(n.body)}</p><div class="meta">${meta}${links}</div></div>`;
 }
-function bindCards(root, list) { $$('.card[data-id]', root).forEach(c => c.onclick = () => editNote(list.find(n => n.id === c.dataset.id))); }
+// カードをタップ → 見る画面。右上の 📋 → 開かずに本文をコピー
+function bindCards(root, list) {
+  $$('.card[data-id]', root).forEach(c => {
+    const n = list.find(x => x.id === c.dataset.id);
+    c.onclick = () => viewNote(n);
+    $('.cpy', c).onclick = e => { e.stopPropagation(); copy(n.body || n.title, '本文をコピーしました'); };
+  });
+}
+
+// ---------- 見る画面（コピーしやすく） ----------
+// 本文から、まるごとコピーしたくなりそうな部分（URL・メール・電話番号・郵便番号）を拾う
+const COPYABLE = [
+  ['🔗', /https?:\/\/[^\s　「」『』（）()<>]+/g],
+  ['✉️', /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g],
+  ['📞', /(?<![\d-])0\d{1,4}-\d{1,4}-\d{3,4}(?![\d-])|(?<![\d-])0\d{9,10}(?![\d-])/g],
+  ['〒', /(?<![\d-])\d{3}-\d{4}(?![\d-])/g],
+];
+function findCopyables(text) {
+  const out = [], seen = new Set();
+  for (const [icon, re] of COPYABLE) for (const m of text.matchAll(re)) {
+    const v = m[0].replace(/[.,、。]+$/, '');
+    if (!seen.has(v)) { seen.add(v); out.push([icon, v]); }
+  }
+  return out.slice(0, 12);
+}
+function viewNote(n) {
+  const lines = (n.body || '').split('\n');
+  const found = findCopyables(n.body || '');
+  const meta = [n.kind !== 'memo' ? KINDS[n.kind] : '', esc(n.genre || ''), fmt(n.updated)].filter(Boolean).join(' · ');
+  const HINT = n.title ? 'タイトルや行をタップすると、そこだけコピーします。' : '行をタップすると、その1行だけコピーします。';
+  openSheet(`<h2 class="vtitle ${n.title ? 'tap' : ''}" id="vt">${n.pinned ? '📌 ' : ''}${esc(n.title || '(無題)')}</h2>
+  <div class="meta" style="margin:-6px 0 10px">${meta}</div>
+  <button class="btn" id="cpAll">📋 全部コピー</button><button class="btn ghost" id="edit">✏️ 編集</button><button class="btn ghost" id="range">✂️ 範囲をえらぶ</button>
+  <p class="hint" id="vhint">${HINT}</p>
+  ${found.length ? `<div class="found">${found.map(([i, v]) => `<button class="chip" data-v="${esc(v)}">${i} ${esc(v)}</button>`).join('')}</div>
+  <p class="hint">↑ URL・電話番号などを見つけました。タップでそこだけコピーします。</p>` : ''}
+  <div class="lines" id="lines">${lines.map((l, i) => l.trim() ? `<div class="ln" data-i="${i}">${esc(l)}</div>` : `<div class="ln blank"></div>`).join('') || '<div class="ln blank"></div>'}</div>
+  <p class="hint">長押しで、ふつうの文字選択もできます。</p>
+  <button class="btn ghost" id="ask">🤖 Claude用にコピー</button>`, r => {
+    const box = $('#lines', r), hint = $('#vhint', r), rangeBtn = $('#range', r);
+    const flash = els => { els.forEach(e => e.classList.add('copied')); setTimeout(() => els.forEach(e => e.classList.remove('copied', 'sel')), 1200); };
+    $('#cpAll', r).onclick = () => copy(n.body || n.title, '全部コピーしました');
+    $('#edit', r).onclick = () => editNote(n, null, true);
+    $('#ask', r).onclick = () => copy(`次のメモについて、深掘りする問いや関連しそうな視点を教えてください。\n\n【${n.title}】\n${n.body}`);
+    if (n.title) $('#vt', r).onclick = e => { copy(n.title, 'タイトルをコピーしました'); flash([e.currentTarget]); };
+    $$('.found .chip', r).forEach(c => c.onclick = () => copy(c.dataset.v, `コピー：${c.dataset.v}`));
+    // 範囲をえらぶ：はじめの行 → 終わりの行 の順にタップすると、その間をまとめてコピー
+    let pick = null; // null: ふつう ／ -1: はじめの行を待っている ／ 数字: はじめの行
+    const endPick = () => { pick = null; box.classList.remove('picking'); rangeBtn.textContent = '✂️ 範囲をえらぶ'; hint.textContent = HINT; };
+    rangeBtn.onclick = () => {
+      if (pick !== null) { $$('.ln.sel', box).forEach(e => e.classList.remove('sel')); return endPick(); }
+      pick = -1; box.classList.add('picking'); rangeBtn.textContent = 'やめる'; hint.textContent = '👆 はじめの行をタップしてください';
+    };
+    $$('.ln[data-i]', box).forEach(el => el.onclick = () => {
+      if (getSelection().toString()) return; // 長押しで文字を選んでいるときは何もしない
+      const i = +el.dataset.i;
+      if (pick === null) { copy(lines[i], `コピー：${lines[i].trim().slice(0, 24)}${lines[i].trim().length > 24 ? '…' : ''}`); flash([el]); return; }
+      if (pick === -1) { pick = i; el.classList.add('sel'); hint.textContent = '👆 終わりの行をタップしてください（同じ行でもOK）'; return; }
+      const a = Math.min(pick, i), b = Math.max(pick, i);
+      const els = $$('.ln', box).filter((_, k) => k >= a && k <= b);
+      els.forEach(e => e.classList.add('sel'));
+      copy(lines.slice(a, b + 1).join('\n'), `${b - a + 1}行をコピーしました`);
+      flash(els); endPick();
+    });
+  });
+}
 async function rMemo() {
   const all = (await DB.all('notes')).filter(n => n.kind === 'memo');
   $('#view').innerHTML = `${await bdBanner()}${await backupBanner(all.length)}<input id="q" type="search" placeholder="🔍 検索" value="${esc(S.q)}">
@@ -104,7 +170,8 @@ async function addGenre() {
   if (!S.genres.includes(n.trim())) await DB.setMeta('genres', [...S.genres, n.trim()]);
   render();
 }
-async function editNote(n, kind) {
+// fromView: 見る画面の「編集」から来たとき（保存したら見る画面に戻る）
+async function editNote(n, kind, fromView) {
   const isNew = !n;
   n = n || { id: DB.uid(), title: '', body: '', genre: S.genre || '', kind: kind || 'memo', pinned: false, links: [], created: Date.now() };
   const all = await DB.all('notes');
@@ -138,6 +205,7 @@ async function editNote(n, kind) {
     $('#ask', r).onclick = () => copy(`次のメモについて、深掘りする問いや関連しそうな視点を教えてください。\n\n【${$('#t', r).value}】\n${$('#b', r).value}`);
     $('#save', r).onclick = async () => {
       if (!(await save())) return toast('空のままです');
+      if (fromView) { toast('保存しました'); render(); viewNote(n); return; }
       closeSheet(true); render();
     };
     const d = $('#del', r); if (d) d.onclick = async () => { if (confirm('削除しますか？')) { await DB.del('notes', n.id); closeSheet(true); render(); } };

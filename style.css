@@ -28,7 +28,7 @@ button.btn.danger{background:var(--danger)}
 #sheet[hidden],#toast[hidden]{display:none}
 #sheetBody{background:var(--bg);width:100%;max-height:92%;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
 #sheetBody h2{margin:0 0 10px;font-size:18px}
-#toast{position:fixed;left:50%;bottom:calc(var(--tab) + 80px);transform:translateX(-50%);background:#222e;color:#fff;padding:8px 16px;border-radius:99px;z-index:30;font-size:14px}
+#toast{position:fixed;left:50%;bottom:calc(var(--tab) + 80px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 40px);text-align:center;background:#222e;color:#fff;padding:8px 16px;border-radius:99px;z-index:30;font-size:14px}
 .empty{text-align:center;color:var(--sub);margin-top:40px;white-space:pre-wrap}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .pair .card{margin:0;min-height:90px}
@@ -56,3 +56,18 @@ img.full{width:100%}
 .card.bdnote .x{position:absolute;top:2px;right:2px;border:0;background:none;color:var(--sub);font-size:16px;padding:8px 10px}
 .pair2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #bprev{white-space:pre-line;font-size:14px}
+.card[data-id]{position:relative;padding-right:48px}
+.card .cpy{position:absolute;top:6px;right:6px;width:40px;height:40px;border:0;border-radius:10px;background:var(--line);font-size:18px;padding:0}
+.card .cpy:active{background:var(--main)}
+.vtitle{word-break:break-word;border-radius:8px}
+.vtitle.tap{cursor:pointer}
+.lines{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:6px}
+.ln{padding:10px 12px;border-bottom:1px solid var(--line);white-space:pre-wrap;word-break:break-word;cursor:pointer;transition:background .15s}
+.ln:last-child{border-bottom:0}
+.ln.blank{padding:3px 12px;cursor:default}
+.ln[data-i]:active,.vtitle.tap:active{background:var(--line)}
+.lines.picking .ln[data-i]{box-shadow:inset 3px 0 0 var(--main)}
+.ln.sel{background:color-mix(in srgb,var(--main) 20%,transparent)}
+.ln.copied,.vtitle.copied{background:color-mix(in srgb,var(--main) 32%,transparent)}
+.found{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.found .chip{margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 12px;font-size:14px}
